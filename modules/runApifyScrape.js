@@ -16,7 +16,7 @@ async function runApifyScrape(company) {
         url: company.apollo_url,
         fileName: `${company.company_name.replace(/\s+/g, '_').toLowerCase()}_contacts`,
         totalRecords: 1000,        // Or bump to 50000 if needed
-        cleanOutput: true
+        cleanOutput: false         // Matches working configuration
       },
       {
         headers: {

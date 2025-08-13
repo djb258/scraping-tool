@@ -1,0 +1,235 @@
+version: '3.8'
+
+services:
+  # HEIR-Integrated Outreach Scraper Application
+  heir-outreach-scraper:
+    build:
+      context: .
+      target: production
+    container_name: heir-outreach-scraper
+    restart: unless-stopped
+    environment:
+      # Database Configuration
+      - DATABASE_URL=${DATABASE_URL}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL}
+      
+      # HEIR Platform Configuration
+      - HEIR_VERSION=2.0.0
+      - PLATFORM_ENV=production
+      - LOG_LEVEL=info
+      - ORBT_ENABLED=true
+      - DATABASE_GATEKEEPER_ENABLED=true
+      - API_GATEWAY_ENABLED=true
+      - DOCTRINE_ENFORCEMENT=strict
+      
+      # API Keys
+      - APOLLO_API_KEY=${APOLLO_API_KEY}
+      - APIFY_API_KEY=${APIFY_API_KEY}
+      - INSTANTLY_API_KEY=${INSTANTLY_API_KEY}
+      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+      
+      # Security Configuration
+      - JWT_SECRET=${JWT_SECRET}
+      - AUTH_REQUIRED=true
+      - RATE_LIMIT_ENABLED=true
+      - TLS_REQUIRED=false
+      
+      # Monitoring Configuration
+      - METRICS_ENABLED=true
+      - HEIR_MONITORING_ENDPOINT=${HEIR_MONITORING_ENDPOINT}
+      - ALERT_WEBHOOK=${ALERT_WEBHOOK}
+      
+      # Application Configuration
+      - APP_BLUEPRINT_ID=heir-outreach-scraper-v2
+      - NODE_ENV=production
+    ports:
+      - "3000:3000"
+    volumes:
+      - heir_logs:/app/.heir/logs
+      - heir_backups:/app/backups
+    networks:
+      - heir_network
+    depends_on:
+      - postgres
+      - redis
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.heir-scraper.rule=Host(`scraper.yourdomain.com`)"
+      - "traefik.http.routers.heir-scraper.tls=true"
+      - "traefik.http.services.heir-scraper.loadbalancer.server.port=3000"
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: heir-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-heir_platform}
+      - POSTGRES_USER=${POSTGRES_USER:-heir_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_INITDB_ARGS="--auth-host=scram-sha-256"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/complete-heir-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./.heir/database_schemas/troubleshooting-data.sql:/docker-entrypoint-initdb.d/02-data.sql:ro
+    networks:
+      - heir_network
+    command: [
+      "postgres",
+      "-c", "log_statement=all",
+      "-c", "log_destination=stderr",
+      "-c", "logging_collector=on",
+      "-c", "max_connections=200",
+      "-c", "shared_buffers=256MB",
+      "-c", "effective_cache_size=1GB"
+    ]
+
+  # Redis for Caching and Rate Limiting
+  redis:
+    image: redis:7-alpine
+    container_name: heir-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - heir_network
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+
+  # HEIR Database Migration Service
+  database-migration:
+    build:
+      context: .
+      target: base
+    container_name: heir-db-migration
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - PLATFORM_ENV=production
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - ./database:/app/database:ro
+      - ./.heir:/app/.heir:ro
+    networks:
+      - heir_network
+    depends_on:
+      - postgres
+    command: [
+      "/bin/sh",
+      "-c",
+      "sleep 10 && /app/scripts/deploy-database.sh"
+    ]
+    profiles:
+      - migration
+
+  # Development Services
+  heir-outreach-scraper-dev:
+    build:
+      context: .
+      target: development
+    container_name: heir-outreach-scraper-dev
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://heir_user:${POSTGRES_PASSWORD}@postgres:5432/heir_platform}
+      - HEIR_VERSION=2.0.0
+      - PLATFORM_ENV=development
+      - LOG_LEVEL=debug
+      - NODE_ENV=development
+      - DEBUG_MODE=true
+      - REQUEST_LOGGING_ENABLED=true
+    ports:
+      - "3001:3000"
+    volumes:
+      - .:/app:delegated
+      - /app/node_modules
+      - heir_logs_dev:/app/.heir/logs
+    networks:
+      - heir_network
+    depends_on:
+      - postgres
+      - redis
+    profiles:
+      - development
+    command: ["npm", "run", "dev"]
+
+  # Testing Service
+  heir-tests:
+    build:
+      context: .
+      target: development
+    container_name: heir-tests
+    environment:
+      - TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://heir_user:${POSTGRES_PASSWORD}@postgres:5432/heir_test}
+      - NODE_ENV=test
+    volumes:
+      - .:/app:delegated
+      - /app/node_modules
+    networks:
+      - heir_network
+    depends_on:
+      - postgres
+    profiles:
+      - testing
+    command: ["npm", "test"]
+
+  # Monitoring and Observability
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: heir-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - heir_network
+    profiles:
+      - monitoring
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: heir-grafana
+    restart: unless-stopped
+    ports:
+      - "3003:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - heir_network
+    profiles:
+      - monitoring
+
+# Networks
+networks:
+  heir_network:
+    driver: bridge
+    name: heir_network
+
+# Persistent Volumes
+volumes:
+  postgres_data:
+    name: heir_postgres_data
+  redis_data:
+    name: heir_redis_data
+  heir_logs:
+    name: heir_logs
+  heir_logs_dev:
+    name: heir_logs_dev
+  heir_backups:
+    name: heir_backups
+  prometheus_data:
+    name: heir_prometheus_data
+  grafana_data:
+    name: heir_grafana_data

@@ -1,27 +1,101 @@
 {
-  "name": "cold-outreach-scraper",
-  "version": "1.0.0",
-  "description": "Production-safe Cold Outreach scraping agent using ORBT Doctrine",
-  "main": "scrapeCompanyContacts.js",
+  "name": "heir-outreach-scraper",
+  "version": "2.0.0",
+  "description": "HEIR-integrated outreach and lead generation system with multi-source scraping",
+  "main": "server.js",
   "scripts": {
-    "start": "node scrapeCompanyContacts.js"
+    "start": "node server.js",
+    "start:api": "node api/server.js",
+    "dev": "nodemon server.js",
+    "dev:api": "nodemon api/server.js",
+    "test": "jest --config=jest.config.js",
+    "test:watch": "jest --config=jest.config.js --watch",
+    "test:coverage": "jest --config=jest.config.js --coverage",
+    "test:integration": "pytest tests/unit/ -m integration -v",
+    "test:unit": "pytest tests/unit/ -v",
+    "test:render": "node testRenderConnection.js",
+    "lint": "eslint . --ext .js --fix",
+    "lint:check": "eslint . --ext .js",
+    "build": "echo 'Building HEIR Outreach Scraper V2.0...'",
+    "deploy:database": "bash scripts/deploy-database.sh",
+    "heir:init": "node heir-drop-in.js",
+    "docker:build": "docker build -t heir-outreach-scraper .",
+    "docker:run": "docker-compose up -d",
+    "docker:dev": "docker-compose --profile development up",
+    "docker:test": "docker-compose --profile testing run --rm heir-tests",
+    "docker:monitoring": "docker-compose --profile monitoring up -d",
+    "health": "curl -f http://localhost:3000/health"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.9.0",
     "apify-client": "^2.8.0",
+    "axios": "^1.11.0",
+    "cheerio": "^1.1.2",
+    "compression": "^1.8.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
     "firebase-admin": "^12.0.0",
-    "dotenv": "^16.3.0"
+    "helmet": "^8.1.0",
+    "morgan": "^1.10.1",
+    "express-rate-limit": "^7.1.5",
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^9.0.1",
+    "winston": "^3.11.0",
+    "node-cron": "^3.0.3",
+    "redis": "^4.6.0",
+    "prometheus-api-metrics": "^3.2.2"
   },
   "devDependencies": {
-    "eslint": "^8.55.0"
+    "eslint": "^8.55.0",
+    "nodemon": "^3.0.0",
+    "jest": "^29.7.0",
+    "eslint-config-standard": "^17.1.0",
+    "eslint-plugin-import": "^2.29.0",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-promise": "^6.1.1",
+    "supertest": "^6.3.3",
+    "@types/jest": "^29.5.8"
   },
   "keywords": [
-    "scraper",
+    "heir",
+    "outreach",
+    "lead-generation",
+    "scraping",
+    "apollo",
+    "linkedin",
+    "ai-agents",
+    "doctrine-compliance",
+    "orbt-protocol",
+    "institutional-knowledge",
     "apify",
     "neon",
     "firebase",
     "cold-outreach"
   ],
-  "author": "",
-  "license": "MIT"
-} 
+  "author": "HEIR Agent System",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/djb258/HEIR-AGENT-SYSTEM.git"
+  },
+  "heir": {
+    "version": "2.0.0",
+    "agents": [
+      "outreach-scraper-specialist",
+      "api-gateway",
+      "database-gatekeeper"
+    ],
+    "features": [
+      "orbt-protocol",
+      "doctrine-compliance",
+      "institutional-knowledge",
+      "multi-source-scraping",
+      "ai-lead-scoring"
+    ]
+  }
+}

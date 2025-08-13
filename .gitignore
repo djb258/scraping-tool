@@ -1,2 +1,5 @@
 .env
 cold.env 
+# HEIR Agent System
+.claude/
+heir-project-config.json
